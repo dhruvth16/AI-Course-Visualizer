@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import userModel, { createToken, verifyToken } from "@/lib/models/user.model";
 import { connectToDB } from "@/lib/db/db";
+import Session from "@/lib/models/session.model";
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
     let existingUser = await userModel.findOne({ email });
     if (existingUser) {
       const token = await createToken(existingUser);
+
       const isTokenValid = await verifyToken(token);
       if (!isTokenValid) {
         return NextResponse.json(
@@ -58,11 +60,18 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      return NextResponse.json({
-        message: "OTP verified successfully",
+      const res = NextResponse.json({
+        success: true,
         user: existingUser,
         token,
       });
+      res.cookies.set("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        sameSite: "lax",
+      });
+      return res;
     }
 
     const newUser = await userModel.create({ email, name });
@@ -76,11 +85,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      message: "OTP verified successfully",
-      user: newUser,
-      token,
+    const res = NextResponse.json({ success: true, user: newUser, token });
+    res.cookies.set("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      sameSite: "lax",
     });
+    return res;
   } catch (error) {
     console.error("Error in OTP verification:", error);
     return NextResponse.json(

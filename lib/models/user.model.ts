@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
+import Session from "./session.model";
 
 const UserSchema = new mongoose.Schema(
   {
@@ -29,8 +30,12 @@ export async function createToken(user: any) {
   const token = jwt.sign(
     { user_id: user._id, email: user.email },
     process.env.JWT_SECRET!,
-    { expiresIn: "60m" }
+    { expiresIn: "7d" }
   );
+  const expires = new Date();
+  expires.setDate(expires.getDate() + 7);
+
+  await Session.create({ userId: user._id, token, expires });
   return token;
 }
 

@@ -82,7 +82,7 @@ function VerifyOtp() {
               ease: "easeInOut",
             },
           }}
-          className="absolute w-[250px] h-[280px] lg:w-[340px] lg:h-[400px] rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 blur-3xl"
+          className="absolute w-[250px] h-[280px] lg:w-[340px] lg:h-[400px] rounded-full bg-linear-to-r from-blue-500 via-purple-500 to-pink-500 blur-3xl"
         />
 
         <Image
@@ -149,7 +149,7 @@ function VerifyOtp() {
       {/* Toggle button - Hidden on mobile */}
       <div
         onClick={() => setSide(!side)}
-        className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-2 lg:p-3 rounded-full absolute right-[47%] sm:right-[48%] lg:right-[48.3%] top-1/2 transform -translate-y-1/2 cursor-pointer hover:scale-105 transition-transform duration-200 z-40 hidden md:block"
+        className="bg-linear-to-r from-blue-500 via-purple-500 to-pink-500 p-2 lg:p-3 rounded-full absolute right-[47%] sm:right-[48%] lg:right-[48.3%] top-1/2 transform -translate-y-1/2 cursor-pointer hover:scale-105 transition-transform duration-200 z-40 hidden md:block"
       >
         <ArrowRightLeft size={32} className="lg:w-10 lg:h-10" />
       </div>
@@ -168,7 +168,7 @@ function VerifyOtp() {
               ease: "easeInOut",
             },
           }}
-          className="absolute -top-20 -right-20 w-[200px] h-[200px] sm:w-[300px] sm:h-[300px] rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 blur-3xl"
+          className="absolute -top-20 -right-20 w-[200px] h-[200px] sm:w-[300px] sm:h-[300px] rounded-full bg-linear-to-r from-blue-500 via-purple-500 to-pink-500 blur-3xl"
         />
         <motion.div
           initial={{ scale: 0.3, opacity: 0.2 }}
@@ -183,7 +183,7 @@ function VerifyOtp() {
               delay: 1,
             },
           }}
-          className="absolute -bottom-20 -left-20 w-[150px] h-[150px] sm:w-[250px] sm:h-[250px] rounded-full bg-gradient-to-r from-pink-500 via-purple-500 to-blue-500 blur-3xl"
+          className="absolute -bottom-20 -left-20 w-[150px] h-[150px] sm:w-[250px] sm:h-[250px] rounded-full bg-linear-to-r from-pink-500 via-purple-500 to-blue-500 blur-3xl"
         />
       </div>
     </div>

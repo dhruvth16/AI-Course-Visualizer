@@ -231,8 +231,10 @@ function PromptLesson() {
     if (confirm("Are you sure you want to log out?")) {
       try {
         const res = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/logout`,
-          {},
+          "/api/logout",
+          {
+            userId: user_id,
+          },
           { withCredentials: true }
         );
 
@@ -485,7 +487,7 @@ function PromptLesson() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 disabled={loading || !prompt.trim()}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white md:px-8 px-4 md:py-3 py-2 rounded-xl font-medium transition-all shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+                className="bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white md:px-8 px-4 md:py-3 py-2 rounded-xl font-medium transition-all shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
               >
                 {loading ? "Processing..." : "Explore"}
               </motion.button>
@@ -604,7 +606,7 @@ function PromptLesson() {
               transition={{ duration: 0.3 }}
               className="bg-white text-black rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
             >
-              <div className="flex justify-between items-center border-b border-zinc-700 p-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+              <div className="flex justify-between items-center border-b border-zinc-700 p-6 bg-linear-to-r from-blue-600 to-purple-600 text-white">
                 <h2 className="text-2xl font-bold">{selectedNode.label}</h2>
                 <button
                   onClick={() => setSelectedNode(null)}
