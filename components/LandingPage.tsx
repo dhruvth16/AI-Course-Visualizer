@@ -8,6 +8,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { ArrowRightLeft } from "lucide-react";
 import toast from "react-hot-toast";
+import { initiateSignin } from "@/services/auth.service";
 
 function LandingPage() {
   const [email, setEmail] = useState("");
@@ -20,8 +21,8 @@ function LandingPage() {
     e.preventDefault();
     try {
       setLoading(true);
-      const res = await axios.post("/api/initiate-signin", { email, name });
-      if (res.status === 200) {
+      const res = await initiateSignin({ email: email.trim(), name });
+      if (res?.status === 200) {
         toast.success("OTP sent successfully! Please check your email.");
         sessionStorage.setItem("email", email);
         sessionStorage.setItem("name", name);

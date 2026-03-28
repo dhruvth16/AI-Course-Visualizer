@@ -8,6 +8,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { ArrowRightLeft } from "lucide-react";
 import toast from "react-hot-toast";
+import { verifyOtp } from "@/services/auth.service";
 
 function VerifyOtp() {
   const [otp, setOtp] = useState("");
@@ -22,19 +23,15 @@ function VerifyOtp() {
     e.preventDefault();
     try {
       setLoading(true);
-      const res = await axios.post("/api/verify-otp", {
-        email,
-        name,
-        otp,
-      });
-      if (res.status === 200) {
+      const res = await verifyOtp({ email: email.trim(), name, otp });
+      if (res?.status === 200) {
         toast.success(res.data.message || "OTP verified successfully!");
         sessionStorage.setItem("user", JSON.stringify(res.data));
         // sessionStorage.setItem("token", res.data.token);
         router.push("/prompt-lesson");
       } else {
         toast.error(
-          res.data.error || "Failed to verify OTP. Please try again."
+          res?.data.error || "Failed to verify OTP. Please try again.",
         );
       }
     } catch (error) {

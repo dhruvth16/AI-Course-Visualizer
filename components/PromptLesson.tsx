@@ -13,24 +13,31 @@ import {
   Plus,
   LogOut,
   User2,
+  Sparkles,
+  BookOpen,
+  Cpu,
+  Clock,
 } from "lucide-react";
-import axios from "axios";
 import React, { useState, useRef, useEffect } from "react";
 import MermaidDiagram from "../helper/MermaidContentViewer";
-import { unauthorized, useRouter, useSearchParams } from "next/navigation";
-import { playfair } from "../helper/fonts";
+import { useRouter } from "next/navigation";
 import Logo from "./Logo";
 import EditProfile from "./EditProfile";
 import toast from "react-hot-toast";
-import { safeRender } from "../helper/safeParseCode";
-import Link from "next/link";
+import {
+  clearSearchHistory,
+  deleteHistoryById,
+  fetchLesson,
+  fetchLessonById,
+  fetchSubtopicContent,
+  saveMermaid,
+  streamMermid,
+} from "@/services/lesson.service";
+import { signOut } from "@/services/auth.service";
 
 const enum MODEL {
-  GPT_4O_MINI = "gpt-4o-mini",
-  GPT_OSS_20B_FREE = "gpt-oss-20b:free",
   GEMINI_2_5_FLASH = "gemini-2.5-flash",
 }
-
 interface HistoryItem {
   _id: string;
   title: string;
@@ -39,12 +46,18 @@ interface HistoryItem {
   model_used: string;
   subtopics: string[];
 }
-
 interface User {
   name: string;
   email: string;
   token: string;
 }
+
+const SELECT_ARROW = {
+  backgroundImage:
+    "url(\"data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%237a8a9e' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E\")",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 0 center",
+};
 
 function PromptLesson() {
   const [prompt, setPrompt] = useState("");
@@ -64,113 +77,89 @@ function PromptLesson() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const cachedNodesContent = useRef<Record<string, string>>({});
-
   const router = useRouter();
-  const [token, setToken] = useState<string>("");
-  const [user_id, setUser_id] = useState<string>("");
+  const [token, setToken] = useState("");
+  const [user_id, setUser_id] = useState("");
 
-  const fetchSearchHistory = async (authToken: string) => {
+  const fetchSearchHistory = async ({
+    authToken,
+    user_id,
+  }: {
+    authToken: string;
+    user_id: string;
+  }) => {
     try {
       if (!authToken || !user_id) return;
-      const response = await axios.get(`/api/lessons/${user_id}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
-
-      const history = response.data || [];
+      const response = await fetchLesson({ authToken, user_id });
+      const history = response?.data || [];
       setSearchHistory(history);
-
       if (history.length > 0) {
-        const lastItem = history[history.length - 1];
-        setPrompt(lastItem.title || "");
-        setMermaidCode(lastItem.mermaidCode || "");
-        setModel(lastItem.model || "");
-        setGrade(lastItem.grade || "12");
+        const last = history[history.length - 1];
+        setPrompt(last.title || "");
+        setMermaidCode(last.mermaidCode || "");
+        setModel(last.model || "");
+        setGrade(last.grade || "12");
       }
-    } catch (error) {
-      console.error("Error fetching search history:", error);
+    } catch (e) {
+      console.error(e);
     }
   };
 
   useEffect(() => {
-    const storedUser = sessionStorage.getItem("user");
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser.user);
-      setUser_id(parsedUser.user._id);
-      setToken(parsedUser.token);
-    } else {
-      console.warn("No stored user found in sessionStorage");
+    const s = sessionStorage.getItem("user");
+    if (s) {
+      const p = JSON.parse(s);
+      setUser(p.user);
+      setUser_id(p.user._id);
+      setToken(p.token);
     }
   }, []);
-
   useEffect(() => {
-    if (token && user_id) {
-      fetchSearchHistory(token);
-    }
+    if (token && user_id) fetchSearchHistory({ authToken: token, user_id });
   }, [token, user_id]);
 
-  const handleHistoryClick = async (historyId: string) => {
+  const handleHistoryClick = async (id: string) => {
     try {
       setLoading(true);
-
-      const { data } = await axios.get(
-        `/api/lessons?lesson_id=${historyId}&user_id=${user_id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      // Restore lesson title in the input
-      if (data.title) setPrompt(data.title);
-
-      // Restore diagram
-      if (data.mermaidCode) {
-        setMermaidCode(data.mermaidCode);
-        setModel(data.model);
-        setGrade(data.grade);
-      } else {
-        console.warn("No mermaidCode found in response:", data);
+      const d = await fetchLessonById({ historyId: id, user_id, token });
+      if (d?.title) setPrompt(d.title);
+      if (d?.mermaidCode) {
+        setMermaidCode(d.mermaidCode);
+        setModel(d.model);
+        setGrade(d.grade);
       }
-    } catch (error) {
-      console.error("Error fetching lesson:", error);
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
-
-  const clearHistory = () => {
-    if (confirm("Are you sure you want to clear the search history?")) {
-      axios
-        .delete(
-          `${process.env.NEXT_PUBLIC_API_URL}/clear_history?user_id=${user_id}`
-        )
-        .then(() => {
-          setSearchHistory([]);
-        })
-        .catch((error) => {
-          console.error("Error clearing history:", error);
-        });
+  const clearHistory = async () => {
+    if (!confirm("Clear all?")) return;
+    try {
+      const r = await clearSearchHistory(user_id);
+      if (r?.status === 200) {
+        toast.success("Cleared.");
+        setSearchHistory([]);
+        setMermaidCode("");
+      }
+    } catch {
+      toast.error("Failed.");
     }
   };
-
-  const handleDeleteHistory = (historyId: string) => {
-    if (confirm("Are you sure you want to delete this search history?")) {
-      axios
-        .delete(`/api/lessons/clear?lesson_id=${historyId}&user_id=${user_id}`)
-        .then(() => {
-          setSearchHistory((prev) =>
-            prev.filter((item) => item._id !== historyId)
-          );
-          setMermaidCode("");
-        })
-        .catch((error) => {
-          console.error("Error deleting history:", error);
-        });
+  const handleDeleteHistory = async (id: string) => {
+    if (!confirm("Delete?")) return;
+    try {
+      const r = await deleteHistoryById({ historyId: id, user_id });
+      if (r?.status === 200) {
+        toast.success("Deleted.");
+        setSearchHistory((p) => p.filter((i) => i._id !== id));
+        setMermaidCode("");
+      }
+    } catch {
+      toast.error("Failed.");
     }
   };
-
   const handleNewChat = () => {
     setPrompt("");
     setMermaidCode("");
@@ -178,371 +167,377 @@ function PromptLesson() {
     setSelectedNode(null);
     setModel("");
   };
-
   const handleNodeClick = async (id: string, label: string) => {
     setSelectedNode({ id, label });
-
     if (cachedNodesContent.current[label]) {
       setSubtopicContent(cachedNodesContent.current[label]);
       return;
     }
-
-    const cacheKey = `subtopic-${id}-${label}`;
-    const cachedData = await getFromDB(cacheKey);
-
-    if (cachedData && cachedData.content.content) {
-      const isCacheValid =
-        Date.now() - cachedData.timestamp < 24 * 60 * 60 * 1000;
-      if (isCacheValid) {
-        setSubtopicContent(cachedData.content.content);
-        cachedNodesContent.current[label] = cachedData.content.content;
-        return;
-      }
+    const key = `subtopic-${id}-${label}`;
+    const cached = await getFromDB(key);
+    if (cached?.content?.content && Date.now() - cached.timestamp < 86400000) {
+      setSubtopicContent(cached.content.content);
+      cachedNodesContent.current[label] = cached.content.content;
+      return;
     }
-
     try {
       setLoadingContent(true);
-      const res = await axios.post(`/api/subtopic`, {
-        lesson_name: prompt,
-        subtopic_name: label,
-        model: model,
-        grade: grade,
-      });
-      if (res.status === 200) {
-        toast.success("Subtopic content fetched successfully!");
-        setSubtopicContent(res.data.subtopic_content);
+      const r = await fetchSubtopicContent({ prompt, label, model, grade });
+      if (r?.status === 200) {
+        setSubtopicContent(r.data.subtopic_content);
+        cachedNodesContent.current[label] = r.data.subtopic_content;
+        await saveToDB(key, {
+          content: r.data.subtopic_content,
+          timestamp: Date.now(),
+        });
       }
-
-      cachedNodesContent.current[label] = res.data.subtopic_content;
-      await saveToDB(cacheKey, {
-        content: res.data.subtopic_content,
-        timestamp: Date.now(),
-      });
-    } catch (error) {
-      toast.error("Failed to fetch subtopic content. Please try again.");
-      console.error("Error fetching node details:", error);
-      setSubtopicContent("Failed to load content. Please try again.");
+    } catch {
+      toast.error("Failed.");
+      setSubtopicContent("Failed. Retry.");
     } finally {
       setLoadingContent(false);
     }
   };
-
   const handleLogout = async () => {
-    if (confirm("Are you sure you want to log out?")) {
-      try {
-        const res = await axios.post(
-          "/api/logout",
-          {
-            userId: user_id,
-          },
-          { withCredentials: true }
-        );
-
-        if (res.status === 200) {
-          toast.success("Logged out successfully!");
-          router.push("/");
-        }
-      } catch (error) {
-        toast.error("Failed to log out. Please try again.");
-        console.error("Error logging out:", error);
+    if (!confirm("Sign out?")) return;
+    try {
+      const r = await signOut(user_id);
+      if (r?.status === 200) {
+        toast.success("Signed out.");
+        router.push("/");
       }
+    } catch {
+      toast.error("Failed.");
     }
   };
-
   async function streamMermaidDiagram(e: React.FormEvent) {
     e.preventDefault();
     setMermaidCode("");
     setIsStreaming(true);
-    const res = await axios.post("/api/lessons/stream", {
-      lesson_name: prompt,
-      model,
-      grade,
-    });
-    if (!res.data) throw new Error("No response body");
-
-    const mermaidCode = res.data;
-
-    setMermaidCode(mermaidCode);
+    const r = await streamMermid({ prompt, model, grade });
+    if (!r?.data) throw new Error("No body");
+    setMermaidCode(r.data);
     setIsStreaming(false);
-    await saveMermaidDiagram(mermaidCode);
+    await saveMermaidDiagram(r.data);
   }
-
-  async function saveMermaidDiagram(mermaid_code: string) {
+  async function saveMermaidDiagram(code: string) {
     try {
-      const res = await axios.post("/api/lessons/create", {
+      const r = await saveMermaid({
         user_id,
-        lesson_name: prompt,
+        prompt,
+        mermaid_code: code,
         model,
         grade,
-        mermaid_code,
       });
-
-      if (res.data && res.data.mermaid_code) {
-        toast.success("Lesson flowchart created successfully!");
-      }
-    } catch (error) {
-      toast.error("Failed to create lesson flowchart.");
+      if (r?.data?.mermaid_code) toast.success("Saved.");
+    } catch {
+      toast.error("Failed.");
     }
   }
 
   return (
-    <div className="flex h-screen bg-black">
-      {/* Sidebar */}
-      <motion.div
+    <div className="flex h-screen bg-[#080a0f] overflow-hidden">
+      {/* SIDEBAR */}
+      <motion.aside
         initial={false}
-        animate={{ width: sidebarOpen ? 300 : 50 }}
-        transition={{ duration: 0.3, ease: "easeInOut" }}
-        className="bg-zinc-900 text-white shadow-2xl border-r border-zinc-800 flex flex-col justify-between relative z-10"
+        animate={{ width: sidebarOpen ? 272 : 52 }}
+        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+        className="flex-shrink-0 flex flex-col bg-[#0d1117] border-r border-white/[0.06] z-20 overflow-hidden"
       >
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 px-3 py-[14px] border-b border-white/[0.06]">
           {sidebarOpen && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
               className="flex items-center gap-2"
             >
-              <History className="text-blue-400" size={20} />
-              <h2 className="font-semibold">Search History</h2>
+              <History size={13} className="text-[#63b3ed]" />
+              <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.1em] text-[#3d4a5c]">
+                History
+              </span>
             </motion.div>
           )}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className=" hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+            className={`flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0 bg-[#111620] border border-white/[0.06] text-[#7a8a9e] hover:text-[#e8edf5] hover:border-white/10 transition-all cursor-pointer ${sidebarOpen ? "ml-auto" : "mx-auto"}`}
           >
             {sidebarOpen ? (
-              <ChevronLeft size={18} />
+              <ChevronLeft size={13} />
             ) : (
-              <ChevronRight size={18} />
+              <ChevronRight size={13} />
             )}
           </button>
         </div>
 
-        {/* Sidebar Content */}
         {sidebarOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex-1 overflow-y-auto no-scrollbar p-4"
+            transition={{ duration: 0.15, delay: 0.05 }}
+            className="flex-1 overflow-y-auto px-3 py-3 [&::-webkit-scrollbar]:w-[2px] [&::-webkit-scrollbar-thumb]:bg-white/[0.06]"
           >
-            <motion.button
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.05 }}
+            <button
               onClick={() => setEditProfile(true)}
-              className="w-full p-2 text-left bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 flex items-center mb-4 gap-2 cursor-pointer"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl mb-3 bg-[#111620] border border-white/[0.06] hover:border-white/10 transition-all cursor-pointer text-left"
             >
-              <User2 color="white" />
-              Account
-            </motion.button>
-            <div
-              className="flex items-center gap-2 mb-8 cursor-pointer"
+              <div className="w-7 h-7 flex-shrink-0 rounded-full bg-[#63b3ed]/10 border border-[#63b3ed]/20 flex items-center justify-center">
+                <User2 size={12} className="text-[#63b3ed]" />
+              </div>
+              <div className="overflow-hidden">
+                <p className="text-[12px] font-semibold text-[#e8edf5] truncate leading-tight">
+                  {user?.name || "Account"}
+                </p>
+                <p className="text-[10px] text-[#3d4a5c] truncate font-mono">
+                  {user?.email}
+                </p>
+              </div>
+            </button>
+
+            <button
               onClick={handleNewChat}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl mb-4 border border-dashed border-white/[0.06] text-[#3d4a5c] hover:text-[#7a8a9e] hover:border-white/10 text-[12px] font-semibold transition-all cursor-pointer"
             >
-              <span className="bg-zinc-800 p-2 rounded-full hover:bg-zinc-700 transition-colors">
-                <Plus size={16} />
-              </span>
-              <span>New chat</span>
-            </div>
+              <Plus size={12} /> New session
+            </button>
+
+            {searchHistory.length > 0 && (
+              <div className="flex items-center justify-between px-1 mb-2">
+                <span className="text-[9px] font-mono font-semibold uppercase tracking-[0.1em] text-[#3d4a5c]">
+                  Recent
+                </span>
+                <button
+                  onClick={clearHistory}
+                  className="text-[9px] text-[#f56565] bg-none border-none cursor-pointer font-mono hover:opacity-70"
+                >
+                  clear all
+                </button>
+              </div>
+            )}
+
             {searchHistory.length > 0 ? (
-              <>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-sm text-gray-300">Recent searches</span>
-                  <button
-                    onClick={clearHistory}
-                    className="text-xs text-red-400 hover:text-red-600 transition-colors"
+              <div className="space-y-1">
+                {searchHistory.map((item, i) => (
+                  <motion.div
+                    key={item._id}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                    onClick={() => handleHistoryClick(item._id)}
+                    className="group flex items-center gap-2 px-3 py-2 rounded-lg bg-[#111620] border border-white/[0.04] hover:border-white/[0.08] hover:bg-[#161d2a] cursor-pointer transition-all"
                   >
-                    Clear all
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {searchHistory.map((item: HistoryItem, index) => (
-                    <motion.button
-                      key={index}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      onClick={() => handleHistoryClick(item._id)}
-                      className="w-full p-3 text-left bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700"
+                    <Clock size={10} className="text-[#3d4a5c] flex-shrink-0" />
+                    <span className="flex-1 text-[11px] text-[#7a8a9e] truncate">
+                      {item.title}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteHistory(item._id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-[#f56565] bg-none border-none cursor-pointer p-0 transition-opacity"
                     >
-                      <div className="text-sm truncate text-gray-200 flex items-center justify-between w-full">
-                        <div className="w-4/5 overflow-x-auto no-scrollbar">
-                          {item.title}
-                        </div>
-                        <div
-                          className="hover:text-red-500 cursor-pointer"
-                          onClick={() => handleDeleteHistory(item._id)}
-                        >
-                          <Trash2 size={15} />
-                        </div>
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
-              </>
+                      <Trash2 size={10} />
+                    </button>
+                  </motion.div>
+                ))}
+              </div>
             ) : (
-              <div className="text-center text-gray-500 mt-8">
-                <History size={48} className="mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No search history yet</p>
+              <div className="flex flex-col items-center py-10 text-center">
+                <History size={24} className="text-[#3d4a5c] opacity-30 mb-2" />
+                <p className="text-[11px] font-mono text-[#3d4a5c]">
+                  No sessions yet
+                </p>
               </div>
             )}
           </motion.div>
         )}
-        <motion.div className="p-3">
-          <motion.button
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.05 }}
-            onClick={handleLogout}
-            className={`w-full p-2 text-left bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 items-center mb-2 gap-2 cursor-pointer ${
-              sidebarOpen ? "flex" : "hidden"
-            }`}
-          >
-            <LogOut />
-            Logout
-          </motion.button>
-        </motion.div>
-      </motion.div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-x-auto">
-        {/* Header */}
-        <div className="bg-zinc-800 border-b border-zinc-700 py-3 flex items-center">
-          <div className="max-w-4xl text-center mx-auto">
-            <Logo />
-          </div>
-        </div>
-
-        {/* Search Section */}
-        <div className="bg-zinc-800 border-b border-zinc-800 p-6 flex items-center justify-center">
-          <div className="max-w-4xl mx-auto">
-            <form
-              onSubmit={streamMermaidDiagram}
-              className="flex items-center md:flex-row flex-col gap-4"
+        {sidebarOpen && (
+          <div className="px-3 py-3 border-t border-white/[0.06]">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.06] text-[#3d4a5c] hover:text-[#7a8a9e] hover:border-white/10 text-[11px] font-semibold transition-all cursor-pointer"
             >
-              <div className="flex md:items-start flex-col gap-3 ">
-                <div className="flex flex-col md:flex-row items-center justify-between w-full gap-3 border border-zinc-700 rounded-xl px-2 md:py-3 py-2 bg-zinc-800">
-                  <label
-                    htmlFor="profession"
-                    className="text-white md:text-md text-sm font-semibold"
-                  >
-                    For which class you want result for?
-                  </label>
-                  <select
-                    name="profession"
-                    id="profession"
-                    value={grade}
-                    onChange={(e) => setGrade(e.target.value)}
-                    className="px-2 py-1 block border border-zinc-700 rounded-lg text-white bg-zinc-800 hover:bg-zinc-700 transition-colors md:ml-2"
-                  >
-                    <option value="select grade">Select Grade</option>
-                    <option value="10">10th Grade</option>
-                    <option value="12">12th Grade</option>
-                    <option value="college">College</option>
-                  </select>
-                </div>
-                <div className="relative flex items-center justify-between border border-zinc-700 px-2 rounded-xl">
-                  <Search
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    size={20}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Enter the lesson you want for quick revision..."
-                    className="w-full pl-10 pr-4 md:py-3 py-2 outline-none transition-all bg-zinc-800 text-white"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                  />
-                  <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value as MODEL)}
-                    name="model"
-                    id="model"
-                    className="px-2 py-1 md:block hidden border border-zinc-700 rounded-lg text-white bg-zinc-800 hover:bg-zinc-700 transition-colors ml-2"
-                  >
-                    <option value="select model">Model</option>
-                    {/* <option value="gpt-5">GPT-5</option> */}
-                    {/* <option value="openai/gpt-oss-20b:free">GPT-OSS</option> */}
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Mobile */}
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value as MODEL)}
-                name="model"
-                id="model"
-                className="px-2 py-1 md:hidden block border border-zinc-700 rounded-lg text-white bg-zinc-800 hover:bg-zinc-700 transition-colors ml-2"
-              >
-                <option value="select model">Model</option>
-                {/* <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-                <option value="openai/gpt-oss-20b:free">GPT-OSS</option> */}
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-              </select>
-
-              <motion.button
-                type="submit"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                disabled={loading || !prompt.trim()}
-                className="bg-linear-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white md:px-8 px-4 md:py-3 py-2 rounded-xl font-medium transition-all shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
-              >
-                {loading ? "Processing..." : "Explore"}
-              </motion.button>
-            </form>
+              <LogOut size={12} /> Sign out
+            </button>
           </div>
+        )}
+      </motion.aside>
+
+      {/* MAIN */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        <header className="flex items-center justify-between px-6 h-[52px] flex-shrink-0 bg-[#0d1117] border-b border-white/[0.06]">
+          <Logo />
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#63b3ed] animate-pulse" />
+            <span className="text-[10px] font-mono text-[#3d4a5c] tracking-widest">
+              system online
+            </span>
+          </div>
+        </header>
+
+        <div className="flex-shrink-0 bg-[#0d1117] border-b border-white/[0.06] px-6 py-4">
+          <form
+            onSubmit={streamMermaidDiagram}
+            className="max-w-[860px] mx-auto flex items-stretch gap-2.5 flex-wrap"
+          >
+            <div className="flex items-center gap-2 px-3.5 h-11 rounded-xl bg-[#111620] border border-white/[0.06] hover:border-white/10 transition-colors flex-shrink-0">
+              <BookOpen size={12} className="text-[#3d4a5c]" />
+              <select
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+                className="bg-transparent border-none outline-none text-[#7a8a9e] text-[12px] font-semibold cursor-pointer appearance-none pr-4"
+                style={SELECT_ARROW}
+              >
+                <option value="select grade">Grade</option>
+                <option value="10">Grade 10</option>
+                <option value="12">Grade 12</option>
+                <option value="college">College</option>
+              </select>
+            </div>
+
+            <div className="flex-1 min-w-[220px] gap-2.5 h-11 px-3.5 rounded-xl bg-[#111620] border border-white/[0.06] focus-within:border-[#63b3ed]/30 focus-within:shadow-[0_0_0_3px_rgba(99,179,237,0.05)] transition-all duration-200 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Search size={13} className="text-[#3d4a5c] flex-shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Enter a topic to visualize..."
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="flex-1 bg-transparent border-none outline-none text-[13px] text-[#e8edf5] placeholder:text-[#3d4a5c]"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 px-3.5 h-11 rounded-xl bg-[#111620] border border-white/[0.06] hover:border-white/10 transition-colors flex-shrink-0">
+              <div className="flex items-center gap-1">
+                <Cpu size={11} className="text-[#3d4a5c] flex-shrink-0" />
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value as MODEL)}
+                  className="bg-transparent border-none outline-none text-[#3d4a5c] text-[11px] font-mono cursor-pointer appearance-none pr-4 min-w-[80px]"
+                  style={SELECT_ARROW}
+                >
+                  <option value="">Model</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5</option>
+                </select>
+              </div>
+            </div>
+
+            <motion.button
+              type="submit"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              disabled={loading || !prompt.trim()}
+              className={`flex items-center gap-2 px-5 h-11 flex-shrink-0 rounded-xl text-[12px] font-bold tracking-[0.03em] transition-all cursor-pointer ${
+                loading || !prompt.trim()
+                  ? "bg-[#111620] border border-white/[0.06] text-[#3d4a5c] cursor-not-allowed"
+                  : "bg-gradient-to-r from-[#1a6fdb] to-[#2d8ed4] border border-[#63b3ed]/30 text-white shadow-[0_4px_16px_rgba(26,111,219,0.25)] hover:shadow-[0_4px_24px_rgba(26,111,219,0.35)]"
+              }`}
+            >
+              <Sparkles size={13} />
+              {loading ? "Processing" : "Generate"}
+            </motion.button>
+          </form>
         </div>
 
-        {/* Diagram Section */}
-        <div className="flex-1 overflow-auto md:p-6 p-3">
-          <div className="max-w-9xl mx-auto overflow-x-auto no-scrollbar">
+        <div
+          className="flex-1 overflow-auto p-6 relative bg-[#080a0f]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        >
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute top-0 left-1/4 w-[400px] h-[200px] bg-[#63b3ed]/[0.02] rounded-full blur-3xl" />
+          </div>
+
+          <div className="max-w-[1200px] mx-auto relative">
             {isStreaming && (
-              <pre className="mt-4 p-2 bg-gray-100 rounded max-h-60 overflow-y-auto">
-                {mermaidCode || "Generating diagram..."}
-              </pre>
-            )}
-            {mermaidCode.length === 0 && (
-              <div className="text-center text-gray-400 mt-16">
-                <div className="text-lg">
-                  <h1
-                    className={`font-bold text-3xl capitalize mb-4 ${playfair.variable}`}
-                  >
-                    Welcome! {user?.name}
-                  </h1>
-                  Start by entering a lesson topic above to generate an
-                  interactive diagram.
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-[#0d1117] border border-white/[0.06] rounded-2xl p-4 mb-4"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#63b3ed] animate-pulse" />
+                  <span className="text-[10px] font-mono text-[#3d4a5c]">
+                    Generating diagram…
+                  </span>
                 </div>
-              </div>
+                <pre className="text-[11px] text-[#7a8a9e] font-mono max-h-28 overflow-auto leading-relaxed">
+                  {mermaidCode || "..."}
+                </pre>
+              </motion.div>
             )}
+
+            {!mermaidCode && !isStreaming && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="flex flex-col items-center justify-center py-20 text-center"
+              >
+                <div
+                  className="w-20 h-20 rounded-full border border-[#63b3ed]/[0.12] flex items-center justify-center mb-6"
+                  style={{
+                    background:
+                      "radial-gradient(circle at 40% 40%, rgba(99,179,237,0.12), rgba(99,179,237,0.02))",
+                  }}
+                >
+                  <Sparkles size={28} className="text-[#63b3ed]/40" />
+                </div>
+                <h1 className="text-[clamp(22px,3vw,28px)] font-black tracking-[-0.03em] text-[#e8edf5] mb-2">
+                  Welcome back{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
+                </h1>
+                <p className="text-[13px] text-[#3d4a5c] max-w-sm leading-relaxed">
+                  Enter a lesson topic to generate an interactive knowledge
+                  graph.
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-8">
+                  {[
+                    "Interactive nodes",
+                    "AI-generated diagrams",
+                    "Instant subtopics",
+                  ].map((label) => (
+                    <div
+                      key={label}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#111620] border border-white/[0.06] text-[10px] font-mono text-[#3d4a5c]"
+                    >
+                      <span className="w-1 h-1 rounded-full bg-[#63b3ed] opacity-50" />
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
             {!isStreaming && mermaidCode && (
-              // <motion.div
-              //   initial={{ opacity: 0 }}
-              //   animate={{ opacity: 1 }}
-              //   className="flex items-center justify-center h-64"
-              // >
-              //   <div className="text-center text-white">
-              //     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
-              //     <p className="text-gray-300">
-              //       Loading your learning diagram...
-              //     </p>
-              //   </div>
-              // </motion.div>
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className={`bg-zinc-800 rounded-2xl shadow-xl border border-zinc-700 md:p-6 p-3 overflow-x-auto no-scrollbar ${
-                  sidebarOpen ? "md:block hidden" : "block"
-                }`}
+                transition={{ duration: 0.35 }}
+                className="bg-[#0d1117] border border-white/[0.06] rounded-2xl overflow-hidden"
               >
-                <div className="mb-6">
-                  <p className="text-gray-300">
-                    Click on any node to explore detailed content and examples
-                  </p>
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.06]">
+                  <div className="flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-lg bg-[#63b3ed]/[0.08] border border-[#63b3ed]/20 flex items-center justify-center">
+                      <Sparkles size={12} className="text-[#63b3ed]" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-bold tracking-[-0.01em] text-[#e8edf5] leading-tight">
+                        {prompt}
+                      </p>
+                      <p className="text-[10px] font-mono text-[#3d4a5c]">
+                        Grade {grade} · {model || "default"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="hidden sm:block px-2.5 py-1 rounded-md bg-[#111620] border border-white/[0.06] text-[9px] font-mono text-[#3d4a5c]">
+                    click nodes to explore
+                  </span>
                 </div>
-                <div className="border-2 border-dashed border-zinc-500 rounded-xl md:p-6 p-3 bg-gray-100 ">
+                <div className="bg-[#111620] min-h-[350px] overflow-x-auto p-6">
                   <MermaidDiagram
                     code={mermaidCode}
                     onNodeClick={handleNodeClick}
@@ -551,88 +546,61 @@ function PromptLesson() {
                 </div>
               </motion.div>
             )}
-            {/* ) : mermaidCode.length > 0 ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className={`bg-zinc-800 rounded-2xl shadow-xl border border-zinc-700 md:p-6 p-3 overflow-x-auto no-scrollbar ${
-                  sidebarOpen ? "md:block hidden" : "block"
-                }`}
-              >
-                <div className="mb-6">
-                  <p className="text-gray-300">
-                    Click on any node to explore detailed content and examples
-                  </p>
-                </div>
-                <div className="border-2 border-dashed border-zinc-500 rounded-xl md:p-6 p-3 bg-gray-100 ">
-                  <MermaidDiagram
-                    code={mermaidCode}
-                    onNodeClick={handleNodeClick}
-                    isStreaming={isStreaming}
-                  />
-                </div>
-              </motion.div>
-            ) : (
-              <div className="text-center text-gray-400 mt-16">
-                <div className="text-lg">
-                  <h1
-                    className={`font-bold text-3xl capitalize mb-4 ${playfair.variable}`}
-                  >
-                    Welcome! {name}
-                  </h1>
-                  Start by entering a lesson topic above to generate an
-                  interactive diagram.
-                </div>
-              </div>
-            )} */}
           </div>
         </div>
       </div>
 
-      {/* Modal */}
+      {/* NODE MODAL */}
       <AnimatePresence>
         {selectedNode && (
           <motion.div
-            className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
           >
             <motion.div
-              initial={{ scale: 0.8, opacity: 0, y: 50 }}
+              initial={{ scale: 0.93, opacity: 0, y: 16 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.8, opacity: 0, y: 50 }}
-              transition={{ duration: 0.3 }}
-              className="bg-white text-black rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+              exit={{ scale: 0.93, opacity: 0, y: 16 }}
+              transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+              className="w-full max-w-[760px] max-h-[88vh] flex flex-col bg-gray-200 border border-white/[0.06] rounded-2xl shadow-[0_32px_80px_rgba(0,0,0,0.7)] overflow-hidden"
             >
-              <div className="flex justify-between items-center border-b border-zinc-700 p-6 bg-linear-to-r from-blue-600 to-purple-600 text-white">
-                <h2 className="text-2xl font-bold">{selectedNode.label}</h2>
+              <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0 bg-[#63b3ed]/[0.08] border border-[#63b3ed]/20 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#63b3ed]/[0.08] border border-[#63b3ed]/20 flex items-center justify-center flex-shrink-0">
+                    <BookOpen size={13} className="text-[#63b3ed]" />
+                  </div>
+                  <div>
+                    <h2 className="text-[15px] font-bold tracking-[-0.02em] text-[#14171c]">
+                      {selectedNode.label}
+                    </h2>
+                    <p className="text-[10px] font-mono text-[#3d4a5c]">
+                      subtopic · {prompt}
+                    </p>
+                  </div>
+                </div>
                 <button
                   onClick={() => setSelectedNode(null)}
-                  className="text-white hover:text-red-200 transition-colors p-1"
+                  className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#111620] border border-white/[0.06] text-[#7a8a9e] hover:text-[#e8edf5] hover:border-white/10 transition-all cursor-pointer flex-shrink-0"
                 >
-                  <X size={24} />
+                  <X size={13} />
                 </button>
               </div>
-
-              <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="flex-1 overflow-y-auto px-6 py-5 [&::-webkit-scrollbar]:w-[2px]">
                 {loadingContent ? (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex items-center justify-center h-32"
-                  >
-                    <div className="text-center text-gray-300">
-                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mb-3"></div>
-                      <p>Loading content...</p>
-                    </div>
-                  </motion.div>
+                  <div className="flex flex-col items-center justify-center h-36 gap-3">
+                    <span className="w-2 h-2 rounded-full bg-[#63b3ed] animate-pulse" />
+                    <span className="text-[11px] font-mono text-[#3d4a5c]">
+                      fetching content…
+                    </span>
+                  </div>
                 ) : (
                   <motion.div
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
+                    transition={{ delay: 0.05 }}
+                    className="text-[#e8edf5]"
                   >
                     <RenderContent subtopicContent={subtopicContent} />
                   </motion.div>
@@ -643,17 +611,26 @@ function PromptLesson() {
         )}
       </AnimatePresence>
 
-      {/* Profile page */}
-      {editProfile && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 p-4"
-        >
-          <EditProfile setEditProfile={setEditProfile} user_id={user_id} />
-        </motion.div>
-      )}
+      {/* PROFILE MODAL */}
+      <AnimatePresence>
+        {editProfile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.93, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.93, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <EditProfile setEditProfile={setEditProfile} user_id={user_id} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
