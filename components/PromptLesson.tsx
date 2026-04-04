@@ -396,22 +396,22 @@ function PromptLesson() {
               </select>
             </div>
 
-            <div className="flex-1 min-w-[220px] gap-2.5 h-11 px-3.5 rounded-xl bg-[#111620] border border-white/[0.06] focus-within:border-[#63b3ed]/30 focus-within:shadow-[0_0_0_3px_rgba(99,179,237,0.05)] transition-all duration-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="flex-1 w-full gap-2.5 h-11 px-3.5 rounded-xl bg-[#111620] border border-white/[0.06] focus-within:border-[#63b3ed]/30 focus-within:shadow-[0_0_0_3px_rgba(99,179,237,0.05)] transition-all duration-200 flex items-center justify-between">
+              <div className="flex items-center gap-3 w-full">
                 <Search size={13} className="text-[#3d4a5c] flex-shrink-0" />
                 <input
                   type="text"
                   placeholder="Enter a topic to visualize..."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  className="flex-1 bg-transparent border-none outline-none text-[13px] text-[#e8edf5] placeholder:text-[#3d4a5c]"
+                  className="flex-1 bg-transparent border-none outline-none text-[13px] text-[#e8edf5] placeholder:text-[#3d4a5c] w-full"
                 />
               </div>
             </div>
             <div className="flex items-center gap-2 px-3.5 h-11 rounded-xl bg-[#111620] border border-white/[0.06] hover:border-white/10 transition-colors flex-shrink-0">
               <div className="flex items-center gap-1">
                 <Cpu size={11} className="text-[#3d4a5c] flex-shrink-0" />
-                <select
+                {/* <select
                   value={model}
                   onChange={(e) => setModel(e.target.value as MODEL)}
                   className="bg-transparent border-none outline-none text-[#3d4a5c] text-[11px] font-mono cursor-pointer appearance-none pr-4 min-w-[80px]"
@@ -419,6 +419,15 @@ function PromptLesson() {
                 >
                   <option value="">Model</option>
                   <option value="gemini-2.5-flash">Gemini 2.5</option>
+                </select> */}
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value as MODEL)}
+                  className="bg-transparent border-none outline-none text-[#3d4a5c] text-[11px] font-mono cursor-pointer appearance-none pr-4 min-w-[80px]"
+                  style={SELECT_ARROW}
+                >
+                  <option value="">Model</option>
+                  <option value="google/gemma-4-31b-it">Gemma 4-31B</option>
                 </select>
               </div>
             </div>
