@@ -108,7 +108,11 @@ export async function streamMermid({
       model,
       grade,
     });
-    return res;
+    if (res.status === 200) {
+      return res;
+    } else {
+      console.error("Error streaming mermaid content:", res.statusText);
+    }
   } catch (error) {
     console.error("Error streaming mermaid content:", error);
   }

@@ -34,16 +34,15 @@ import {
   streamMermid,
 } from "@/services/lesson.service";
 import { signOut } from "@/services/auth.service";
+import { MODEL_IDS, type SupportedModel } from "@/lib/ai/models";
 
-const enum MODEL {
-  GEMINI_2_5_FLASH = "gemini-2.5-flash",
-}
 interface HistoryItem {
   _id: string;
   title: string;
   timestamp: number;
-  mermaidDiagram: string;
-  model_used: string;
+  mermaidCode: string;
+  model: SupportedModel;
+  grade: string;
   subtopics: string[];
 }
 interface User {
@@ -71,7 +70,7 @@ function PromptLesson() {
   const [searchHistory, setSearchHistory] = useState<HistoryItem[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mermaidCode, setMermaidCode] = useState("");
-  const [model, setModel] = useState<MODEL | "">("");
+  const [model, setModel] = useState<SupportedModel | "">("");
   const [editProfile, setEditProfile] = useState(false);
   const [grade, setGrade] = useState("12");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -214,11 +213,16 @@ function PromptLesson() {
     e.preventDefault();
     setMermaidCode("");
     setIsStreaming(true);
-    const r = await streamMermid({ prompt, model, grade });
-    if (!r?.data) throw new Error("No body");
-    setMermaidCode(r.data);
-    setIsStreaming(false);
-    await saveMermaidDiagram(r.data);
+    try {
+      const r = await streamMermid({ prompt, model, grade });
+      if (!r?.data) throw new Error("No body");
+      setMermaidCode(r.data);
+      await saveMermaidDiagram(r.data);
+    } catch (error) {
+      console.error("Error streaming mermaid content:", error);
+    } finally {
+      setIsStreaming(false);
+    }
   }
   async function saveMermaidDiagram(code: string) {
     try {
@@ -411,6 +415,16 @@ function PromptLesson() {
             <div className="flex items-center gap-2 px-3.5 h-11 rounded-xl bg-[#111620] border border-white/[0.06] hover:border-white/10 transition-colors flex-shrink-0">
               <div className="flex items-center gap-1">
                 <Cpu size={11} className="text-[#3d4a5c] flex-shrink-0" />
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value as SupportedModel)}
+                  className="bg-transparent border-none outline-none text-[#3d4a5c] text-[11px] font-mono cursor-pointer appearance-none pr-4 min-w-[80px]"
+                  style={SELECT_ARROW}
+                >
+                  <option value="">Model</option>
+                  <option value={MODEL_IDS.GEMINI_2_5_FLASH}>Gemini 2.5</option>
+                  <option value={MODEL_IDS.GEMMA_4_31B}>Gemma 4-31B</option>
+                </select>
                 {/* <select
                   value={model}
                   onChange={(e) => setModel(e.target.value as MODEL)}
@@ -418,17 +432,8 @@ function PromptLesson() {
                   style={SELECT_ARROW}
                 >
                   <option value="">Model</option>
-                  <option value="gemini-2.5-flash">Gemini 2.5</option>
-                </select> */}
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value as MODEL)}
-                  className="bg-transparent border-none outline-none text-[#3d4a5c] text-[11px] font-mono cursor-pointer appearance-none pr-4 min-w-[80px]"
-                  style={SELECT_ARROW}
-                >
-                  <option value="">Model</option>
                   <option value="google/gemma-4-31b-it">Gemma 4-31B</option>
-                </select>
+                </select> */}
               </div>
             </div>
 
@@ -436,9 +441,9 @@ function PromptLesson() {
               type="submit"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
-              disabled={loading || !prompt.trim()}
+              disabled={loading || !prompt.trim() || !model}
               className={`flex items-center gap-2 px-5 h-11 flex-shrink-0 rounded-xl text-[12px] font-bold tracking-[0.03em] transition-all cursor-pointer ${
-                loading || !prompt.trim()
+                loading || !prompt.trim() || !model
                   ? "bg-[#111620] border border-white/[0.06] text-[#3d4a5c] cursor-not-allowed"
                   : "bg-gradient-to-r from-[#1a6fdb] to-[#2d8ed4] border border-[#63b3ed]/30 text-white shadow-[0_4px_16px_rgba(26,111,219,0.25)] hover:shadow-[0_4px_24px_rgba(26,111,219,0.35)]"
               }`}

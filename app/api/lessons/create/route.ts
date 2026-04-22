@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     if (!user_id || !lesson_name || !mermaid_code || !model || !grade) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     console.error("Error creating lesson:", error);
     return NextResponse.json(
       { error: "Failed to create lesson" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
